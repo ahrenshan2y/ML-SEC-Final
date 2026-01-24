@@ -1,0 +1,14 @@
+{
+  "mode": "online",
+  "csv": "data\\phishing_urls.csv",
+  "url_col": "url",
+  "label_col": "label",
+  "n_train": 344,
+  "n_test": 86,
+  "feature_dim": 30,
+  "seed": 42,
+  "has_urls": true,
+  "online_timeout": 4.0,
+  "maxn": 430,
+  "cache_feats": false
+}
