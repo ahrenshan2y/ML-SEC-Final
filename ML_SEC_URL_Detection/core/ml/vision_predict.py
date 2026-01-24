@@ -26,7 +26,6 @@ def make_driver(headless: bool = True, timeout: float = 15.0):
     opts.add_argument("--no-sandbox")
     opts.add_argument("--window-size=1365,768")
 
-    # 可选：降低一些站点的渲染/安全策略干扰
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--ignore-certificate-errors")
     opts.add_argument("--allow-running-insecure-content")
@@ -46,7 +45,6 @@ def main():
     ap.add_argument("--timeout", type=float, default=15.0, help="Page load timeout (seconds)")
     ap.add_argument("--wait", type=float, default=2.0, help="Seconds to wait after load before screenshot")
 
-    # ✅ 新增：允许失败而不抛异常（跑批量很关键）
     ap.add_argument("--allow_fail", action="store_true", help="If set, output error json and exit 0")
 
     args = ap.parse_args()
@@ -65,7 +63,6 @@ def main():
             time.sleep(args.wait)
             png = driver.get_screenshot_as_png()
         except (TimeoutException, WebDriverException) as e:
-            # 典型：ERR_NAME_NOT_RESOLVED / timeout / SSL 等
             err = str(e).splitlines()[0][:300]
             out = {"mode": "vision", "url": url, "pred": None, "proba": None, "error": err}
             print(out)

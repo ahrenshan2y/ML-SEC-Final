@@ -21,9 +21,7 @@ from core.src.vision_features import extract_vision_features_from_image
 
 
 def infer_url_label_columns(df: pd.DataFrame):
-    # 你的数据集当前是 30维特征 + class，通常没有 url 列
-    # 所以 vision 模块需要 url 数据集。
-    # 如果你没有 url 列，就必须换一个带 url 的数据，或另外准备 urls.csv。
+
     candidates_url = ["url", "URL", "website", "WebSite", "link"]
     candidates_y = ["label", "Label", "class", "Class", "target", "Target"]
     url_col = next((c for c in candidates_url if c in df.columns), None)

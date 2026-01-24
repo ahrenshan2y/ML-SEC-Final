@@ -21,7 +21,7 @@ FEATURE_COLS_30 = [
 
 
 def _label_to_text(pred: int) -> str:
-    # 你定义：1 = phishing, 0 = benign
+    # 1 = phishing, 0 = benign
     return "phishing" if pred == 1 else "benign"
 
 
@@ -30,10 +30,10 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--mode", choices=["online", "offline"], default="online")
 
-    # online：输入 URL -> 在线抓取/解析 -> 得到 30 维 -> 喂给模型
+    # online：input URL -> fetch -> get 30 dimension -> feed to model
     ap.add_argument("--url", default=None)
 
-    # offline：从 CSV 取一行 30维（用于实验复现/对齐）
+    # offline：Extracting a 30-dimensional row from a CSV for experiment reproduction and alignment.
     ap.add_argument("--csv", default=None)
     ap.add_argument("--row", type=int, default=None)
 

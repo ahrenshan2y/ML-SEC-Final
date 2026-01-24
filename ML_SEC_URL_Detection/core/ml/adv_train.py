@@ -2,11 +2,9 @@
 import argparse
 import json
 from pathlib import Path
-
 import joblib
 import numpy as np
 import pandas as pd
-
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -14,7 +12,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 
 from .adversarial_attack import batch_attack, OFFLINE_FEATURE_COLS
-
 
 def parse_k_schedule(s: str):
     return [int(x.strip()) for x in s.split(",") if x.strip()]
@@ -63,7 +60,6 @@ def main():
 
     k_list = parse_k_schedule(args.k_schedule)
     if len(k_list) < args.rounds:
-        # 不够就用最后一个补齐
         k_list = k_list + [k_list[-1]] * (args.rounds - len(k_list))
     else:
         k_list = k_list[:args.rounds]
@@ -104,11 +100,11 @@ def main():
             X_mix = X_train
             y_mix = y_train
 
-        # re-train from scratch each round (更稳定复现你当时的日志行为)
+        # re-train from scratch each round 
         model = make_model()
         model.fit(X_mix, y_mix)
 
-    # final reports (k=3 用最后一个k)
+    # final reports (k=3 use the last k)
     final_clean_pred = model.predict(X_test)
     print("\n=== Final Clean Report ===")
     print(classification_report(y_test, final_clean_pred, digits=4))

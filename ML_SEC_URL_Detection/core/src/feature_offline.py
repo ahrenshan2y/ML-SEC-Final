@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-# 这就是 phishing.csv 的 30 维特征列（严格对齐顺序）
+# phishing.csv 30 dimensional features
 OFFLINE30_COLS = [
     "UsingIP", "LongURL", "ShortURL", "Symbol@", "Redirecting//",
     "PrefixSuffix-", "SubDomains", "HTTPS", "DomainRegLen", "Favicon",
@@ -17,20 +17,19 @@ OFFLINE30_COLS = [
     "StatsReport"
 ]
 
-# 常见短链域
 SHORTENER_RE = re.compile(
     r"(bit\.ly|goo\.gl|shorte\.st|ow\.ly|t\.co|tinyurl\.com|is\.gd|cli\.gs|lnkd\.in|db\.tt|adf\.ly|bitly\.com)",
     re.IGNORECASE
 )
 
-# 可疑关键词（可按你项目语境扩展）
+# Keywords suspicious for phishing
 SUSPICIOUS_TOKENS = {
     "login", "verify", "update", "secure", "account", "bank", "confirm",
     "signin", "password", "billing", "webscr", "support", "service",
     "authentication", "authorize", "wallet", "payment"
 }
 
-# 简单 IP 判断（仅 ipv4）
+# Simple IP address regex
 IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 
 
@@ -169,9 +168,9 @@ class FeatureExtractionOffline30:
     def HTTPS(self, scheme: str) -> int:
         return 1 if scheme == "https" else -1
 
-    # 9 DomainRegLen (离线无法whois，用启发式近似：可疑token/新域名特征)
+    # 9 DomainRegLen (Offline cannot perform whois, use heuristic approximation: suspicious tokens/new domain features)
     def DomainRegLen(self, host_no_port: str, tokens: set[str]) -> int:
-        # 近似：若域名很长/混杂数字/可疑token多 -> -1，否则 0/1
+        # Heuristic approximation: if domain is long/mixed with digits/suspicious tokens >= 2 -> -1, otherwise 0/1
         if not host_no_port:
             return -1
         digit_ratio = sum(ch.isdigit() for ch in host_no_port) / max(1, len(host_no_port))
@@ -182,12 +181,12 @@ class FeatureExtractionOffline30:
             return 0
         return 1
 
-    # 10 Favicon (离线无法解析HTML，启发式：若疑似仿冒登录/支付页则 -1，否则 0/1)
+    # 10 Favicon (Offline cannot parse HTML, heuristic: if appears to be fake login/payment page -> -1, otherwise 0/1)
     def Favicon(self, u: str, host_no_port: str, tokens: set[str]) -> int:
-        # 近似：出现 login/verify/bank 等，且非 https -> 更可疑
+        # Heuristic approximation: appearance of login/verify/bank etc., and not https -> more suspicious
         if len(tokens.intersection(SUSPICIOUS_TOKENS)) >= 1 and "https://" not in u.lower():
             return -1
-        return 0  # unknown -> 0 比较合理
+        return 0  # unknown -> 0 is reasonable
 
     # 11 NonStdPort
     def NonStdPort(self, host: str) -> int:
@@ -197,9 +196,9 @@ class FeatureExtractionOffline30:
     def HTTPSDomainURL(self, host_no_port: str) -> int:
         return -1 if "https" in (host_no_port or "") else 1
 
-    # 13 RequestURL（原定义：外链资源比例。离线用：URL里是否出现大量外域跳转/资源痕迹近似）
+    # 13 RequestURL (Original definition: external link resource ratio. Offline approximation: whether URL contains many external domain redirects/resource traces)
     def RequestURL(self, u: str, tokens: set[str]) -> int:
-        # 近似：如果 query 里出现很多 url= / redirect= / next=，通常是跳转/资源引用
+        # Heuristic approximation: if query contains many url=/redirect=/next=, usually redirect/resource reference
         q = _query(u).lower()
         flags = ["url=", "redirect=", "next=", "target=", "dest=", "destination="]
         cnt = sum(f in q for f in flags)
@@ -209,9 +208,9 @@ class FeatureExtractionOffline30:
             return 0
         return 1
 
-    # 14 AnchorURL（原定义：不安全anchor比例。离线近似：是否为“登录/跳转”型 URL）
+    # 14 AnchorURL (Original definition: unsafe anchor ratio. Offline approximation: whether it is a 'login/redirect' type URL)
     def AnchorURL(self, u: str, tokens: set[str]) -> int:
-        # 近似：含大量可疑token或含 fragment/javascript 字样
+        # Heuristic approximation: contains many suspicious tokens or contains fragment/javascript
         if "#javascript" in u.lower():
             return -1
         suspicious = len(tokens.intersection(SUSPICIOUS_TOKENS))
@@ -221,10 +220,10 @@ class FeatureExtractionOffline30:
             return 0
         return 1
 
-    # 15 LinksInScriptTags（离线近似：是否明显加载脚本/追踪参数）
+    # 15 LinksInScriptTags (Offline approximation: whether obviously loading scripts/tracking parameters)
     def LinksInScriptTags(self, u: str, tokens: set[str]) -> int:
         q = _query(u).lower()
-        # 常见追踪/脚本参数
+        # Common tracking/script parameters
         markers = ["utm_", "gclid", "fbclid", "script", "js=", "callback="]
         cnt = sum(m in q for m in markers)
         if cnt >= 2:
@@ -233,53 +232,53 @@ class FeatureExtractionOffline30:
             return 0
         return 1
 
-    # 16 ServerFormHandler（离线近似：是否像“提交表单/登录处理”的路径）
+    # 16 ServerFormHandler (Offline approximation: whether path looks like 'form submission/login handling')
     def ServerFormHandler(self, u: str, tokens: set[str]) -> int:
         path = _path(u).lower()
-        # 常见表单处理端点
+        # Common form handling endpoints
         if any(x in path for x in ["/login", "/signin", "/verify", "/submit", "/auth", "/session"]):
             return 0 if "https://" in u.lower() else -1
         return 1
 
-    # 17 InfoEmail（离线近似：url里是否出现 mailto / email 相关）
+    # 17 InfoEmail (Offline approximation: whether URL contains mailto/email related content)
     def InfoEmail(self, u: str, tokens: set[str]) -> int:
         low = u.lower()
         if "mailto:" in low or "email=" in low:
             return -1
         return 1
 
-    # 18 AbnormalURL（离线近似：host为空/异常字符）
+    # 18 AbnormalURL (Offline approximation: empty host/abnormal characters)
     def AbnormalURL(self, u: str, host_no_port: str) -> int:
         if not host_no_port:
             return -1
-        if re.search(r"[^\x00-\x7F]", u):  # 非ASCII（可能是IDN欺骗）
+        if re.search(r"[^\x00-\x7F]", u):  # Non-ASCII (possibly IDN spoofing)
             return 0
         return 1
 
-    # 19 WebsiteForwarding（离线近似：是否重定向型参数）
+    # 19 WebsiteForwarding (Offline approximation: whether redirect type parameters)
     def WebsiteForwarding(self, u: str) -> int:
         q = _query(u).lower()
         if any(k in q for k in ["redirect=", "next=", "url=", "target=", "dest="]):
             return 0
         return 1
 
-    # 20 StatusBarCust（离线无法看JS，返回 0）
+    # 20 StatusBarCust (Offline cannot analyze JavaScript, return 0)
     def StatusBarCust(self, u: str, tokens: set[str]) -> int:
         return 0
 
-    # 21 DisableRightClick（离线无法看JS，返回 0）
+    # 21 DisableRightClick (Offline cannot analyze JavaScript, return 0)
     def DisableRightClick(self, u: str, tokens: set[str]) -> int:
         return 0
 
-    # 22 UsingPopupWindow（离线无法看JS，返回 0）
+    # 22 UsingPopupWindow (Offline cannot analyze JavaScript, return 0)
     def UsingPopupWindow(self, u: str, tokens: set[str]) -> int:
         return 0
 
-    # 23 IframeRedirection（离线无法看HTML，返回 0）
+    # 23 IframeRedirection (Offline cannot analyze HTML, return 0)
     def IframeRedirection(self, u: str, tokens: set[str]) -> int:
         return 0
 
-    # 24 AgeofDomain（离线无法whois，用启发式：可疑token/混杂数字）
+    # 24 AgeofDomain (Offline cannot perform whois, use heuristic: suspicious tokens/mixed digits)
     def AgeofDomain(self, host_no_port: str, tokens: set[str]) -> int:
         digit_ratio = sum(ch.isdigit() for ch in host_no_port) / max(1, len(host_no_port))
         suspicious = len(tokens.intersection(SUSPICIOUS_TOKENS))
@@ -289,37 +288,37 @@ class FeatureExtractionOffline30:
             return 0
         return 1
 
-    # 25 DNSRecording（离线不解析DNS，返回 0）
+    # 25 DNSRecording (Offline does not resolve DNS, return 0)
     def DNSRecording(self, host_no_port: str) -> int:
         return 0
 
-    # 26 WebsiteTraffic（离线无alexa/流量，返回 0）
+    # 26 WebsiteTraffic (Offline has no Alexa/traffic data, return 0)
     def WebsiteTraffic(self, host_no_port: str, tokens: set[str]) -> int:
         return 0
 
-    # 27 PageRank（离线无pagerank，返回 0）
+    # 27 PageRank (Offline has no pagerank, return 0)
     def PageRank(self, host_no_port: str, tokens: set[str]) -> int:
         return 0
 
-    # 28 GoogleIndex（离线无检索，返回 0）
+    # 28 GoogleIndex (Offline has no search index, return 0)
     def GoogleIndex(self, host_no_port: str, tokens: set[str]) -> int:
         return 0
 
-    # 29 LinksPointingToPage（离线无法统计外链，近似：URL是否很“落地页”）
+    # 29 LinksPointingToPage (Offline cannot count backlinks, approximation: whether URL is a landing page)
     def LinksPointingToPage(self, u: str) -> int:
         path = _path(u)
-        # 近似：没有path或path很短 -> 可能主页（更像良性）
+        # Heuristic approximation: no path or very short path -> likely homepage (more legitimate)
         if len(path.strip("/")) == 0:
             return 1
         if len(path) <= 10:
             return 0
         return -1
 
-    # 30 StatsReport（离线黑名单/可疑TLD启发式）
+    # 30 StatsReport (Offline blacklist/suspicious TLD heuristic)
     def StatsReport(self, host_no_port: str) -> int:
         if not host_no_port:
             return 1
-        # 可疑TLD（示例，可按你数据补充）
+        # Suspicious TLDs (examples, can be extended based on your data)
         bad_tlds = (".xyz", ".top", ".icu", ".cyou", ".sbs", ".lol", ".click")
         if host_no_port.endswith(bad_tlds):
             return -1

@@ -15,22 +15,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 
 def load_dataset(csv_path: Union[str, Path]) -> Tuple[Union[np.ndarray, np.ndarray], np.ndarray, str, str]:
-    """
-    返回：
-      - data: 可能是 urls(np.array[str]) 或 特征矩阵X(np.ndarray)
-      - y
-      - url_col: "<features>" 或 url 列名
-      - y_col: 标签列名
-    """
+
     df = pd.read_csv(csv_path)
 
-    # 常见标签列名
     possible_y = ["label", "target", "y", "class", "Class", "CLASS"]
     y_col = next((c for c in possible_y if c in df.columns), None)
     if y_col is None:
         raise ValueError(f"Cannot find label column in {df.columns}. Expected one of {possible_y}")
 
-    # 情况1：有 url 列 -> 返回 urls 供 FeatureExtraction
     possible_url = ["url", "URL", "Url", "link"]
     url_col = next((c for c in possible_url if c in df.columns), None)
     if url_col is not None:
@@ -38,7 +30,6 @@ def load_dataset(csv_path: Union[str, Path]) -> Tuple[Union[np.ndarray, np.ndarr
         y = df[y_col].astype(int).values
         return urls, y, url_col, y_col
 
-    # 情况2：没有 url 列 -> 直接用特征列训练
     drop_cols = set([y_col, "Index", "index", "Id", "id"])
     feature_cols = [c for c in df.columns if c not in drop_cols]
 
@@ -56,15 +47,15 @@ def featurize(
     cache_path: Optional[Path] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    将 urls -> 特征矩阵 X，并返回有效样本 mask（哪些 url 成功抽取特征）。
-    - 对 offline: 基本不会失败（纯字符串特征）
-    - 对 online: 可能失败，失败样本会被跳过
+    Convert urls -> feature matrix X, and return valid sample mask (which urls successfully extracted features).
+    - For offline: basically won't fail (pure string features)
+    - For online: may fail, failed samples will be skipped
     """
     if maxn is not None:
         urls = urls[:maxn]
 
     if mode == "offline":
-        from src.feature_offline import URLFeatureExtractor  # 你的原逻辑保留
+        from src.feature_offline import URLFeatureExtractor  
         X = [URLFeatureExtractor(u).extract() for u in urls]
         X = np.asarray(X, dtype=float)
         ok_mask = np.ones(len(urls), dtype=bool)
@@ -73,11 +64,9 @@ def featurize(
     if mode == "online":
         from src.feature_online import FeatureExtractionOnline
 
-        # 如果启用 cache 且已存在，就直接读 cache（避免重复抓取）
         if cache_path is not None and cache_path.exists():
             dfc = pd.read_csv(cache_path)
-            # 约定：cache 文件必须至少有 url + label + 30 feats
-            # 这里只取 feats（不取 label，因为 label 来自原始 csv）
+
             feat_cols = [c for c in dfc.columns if c not in ("url", "label")]
             X = dfc[feat_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).values
             ok_mask = np.ones(X.shape[0], dtype=bool)
@@ -86,7 +75,6 @@ def featurize(
         feats_list = []
         ok_mask = np.zeros(len(urls), dtype=bool)
 
-        # online 抓取：失败则跳过
         for i, u in enumerate(urls):
             try:
                 f = FeatureExtractionOnline(u, timeout=timeout).getFeaturesList()
@@ -95,12 +83,11 @@ def featurize(
                 feats_list.append([float(x) for x in f])
                 ok_mask[i] = True
             except Exception:
-                # 失败直接跳过
+
                 ok_mask[i] = False
 
         X = np.asarray(feats_list, dtype=float)
 
-        # 写 cache：把成功的 url 对应特征存起来
         if cache_path is not None:
             ok_urls = urls[ok_mask]
             df_cache = pd.DataFrame(X)
@@ -120,7 +107,6 @@ def main():
     ap.add_argument("--test_size", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=42)
 
-    # ✅ online 训练增强参数（不会影响 offline / 特征表训练）
     ap.add_argument("--timeout", type=float, default=4.0, help="online fetching timeout (seconds)")
     ap.add_argument("--maxn", type=int, default=None, help="limit number of urls for faster run")
     ap.add_argument("--cache_feats", action="store_true", help="cache online features to csv to speed up reruns")
@@ -133,7 +119,6 @@ def main():
 
     data, y, url_col, y_col = load_dataset(csv_path)
 
-    # ✅ 情况2：已经是特征矩阵（X）-> 原逻辑不变
     if isinstance(data, np.ndarray) and data.ndim == 2:
         X = data
         urls = None
@@ -143,7 +128,7 @@ def main():
         )
 
     else:
-        # ✅ 情况1：url + label -> offline/online 都走 featurize
+
         urls = data
 
         cache_path = None
@@ -158,7 +143,6 @@ def main():
             cache_path=cache_path,
         )
 
-        # online 可能跳过失败样本：同步过滤 y
         if args.maxn is not None:
             y = y[:args.maxn]
 
@@ -167,7 +151,6 @@ def main():
         else:
             y_ok = y
 
-        # 保护：如果 online 全失败
         if X_all.shape[0] == 0:
             raise SystemExit("No valid samples after feature extraction. Check URLs / network / timeout.")
 
@@ -175,13 +158,11 @@ def main():
             X_all, y_ok, test_size=args.test_size, random_state=args.seed, stratify=y_ok
         )
 
-        # 打印成功率（仅 url 训练时）
         n_total = int(len(y))
         n_ok = int(len(y_ok))
         if args.mode == "online":
             print(f"[online] total urls={n_total}, succeeded={n_ok}, failed={n_total - n_ok}")
 
-    # 模型 pipeline
     pipe = Pipeline([
         ("scaler", StandardScaler()),
         ("clf", LogisticRegression(max_iter=2000, n_jobs=None))
