@@ -1,6 +1,12 @@
 # core/ml/adversarial_attack.py
 from __future__ import annotations
 import numpy as np
+from sklearn import config_context
+from joblib import parallel_backend
+import warnings
+
+# 抑制joblib相关的警告
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn.utils.parallel')
 
 OFFLINE_FEATURE_COLS = [
     "UsingIP", "LongURL", "ShortURL", "Symbol@", "Redirecting//",
@@ -63,7 +69,9 @@ def feature_flip_attack_one(
                 s = float(model.decision_function(cand.reshape(1, -1))[0])
                 score = -s if y_true == 1 else s
             else:
-                proba = model.predict_proba(cand.reshape(1, -1))[0]
+                # 使用sequential后端确保predict_proba使用单线程
+                with parallel_backend('sequential'):
+                    proba = model.predict_proba(cand.reshape(1, -1))[0]
                 cls = list(model.classes_)
                 idx = cls.index(y_true)
                 score = -float(proba[idx])
@@ -96,13 +104,15 @@ def batch_attack(
     flipped_list: list[list[int]] = []
     success = np.zeros(len(y), dtype=bool)
 
-    for j in range(len(y)):
-        xa, flipped, ok = feature_flip_attack_one(
-            model, X[j], int(y[j]), k=k, attackable_idx=attackable_idx
-        )
-        X_adv[j] = xa
-        flipped_list.append(flipped)
-        success[j] = ok
+    # 使用sequential后端禁用并行处理
+    with parallel_backend('sequential'):
+        for j in range(len(y)):
+            xa, flipped, ok = feature_flip_attack_one(
+                model, X[j], int(y[j]), k=k, attackable_idx=attackable_idx
+            )
+            X_adv[j] = xa
+            flipped_list.append(flipped)
+            success[j] = ok
 
     return X_adv, flipped_list, success
 

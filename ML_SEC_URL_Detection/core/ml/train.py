@@ -13,8 +13,48 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
-def load_dataset(csv_path: Union[str, Path]) -> Tuple[Union[np.ndarray, np.ndarray], np.ndarray, str, str]:
+def build_model(algo: str):
+    """
+    algo:
+      - lr  : StandardScaler + LogisticRegression
+      - rf  : RandomForest (no scaler)
+      - hgb : HistGradientBoosting (no scaler)
+    """
+    algo = algo.lower()
+
+    if algo == "lr":
+        return Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=2000))
+        ])
+
+    if algo == "rf":
+        return RandomForestClassifier(
+            n_estimators=80,
+            max_depth=12,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=1,
+        )
+
+    if algo == "hgb":
+        return HistGradientBoostingClassifier(
+            max_depth=6,
+            learning_rate=0.08,
+            max_iter=300,
+            random_state=42
+        )
+
+    raise ValueError("algo must be one of: lr, rf, hgb")
+
+def load_dataset(csv_path
+                 : Union[str, Path]) -> Tuple[Union[np.ndarray, np.ndarray], np.ndarray, str, str]:
+    
+
 
     df = pd.read_csv(csv_path)
 
@@ -106,7 +146,7 @@ def main():
     ap.add_argument("--outdir", default="artifacts")
     ap.add_argument("--test_size", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=42)
-
+    ap.add_argument("--algo", choices=["lr", "rf", "hgb"], default="lr", help="model algorithm")
     ap.add_argument("--timeout", type=float, default=4.0, help="online fetching timeout (seconds)")
     ap.add_argument("--maxn", type=int, default=None, help="limit number of urls for faster run")
     ap.add_argument("--cache_feats", action="store_true", help="cache online features to csv to speed up reruns")
@@ -163,10 +203,7 @@ def main():
         if args.mode == "online":
             print(f"[online] total urls={n_total}, succeeded={n_ok}, failed={n_total - n_ok}")
 
-    pipe = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(max_iter=2000, n_jobs=None))
-    ])
+    pipe = build_model(args.algo)
 
     pipe.fit(X_train, y_train)
     pred = pipe.predict(X_test)
@@ -174,8 +211,9 @@ def main():
     print("=== Classification report ===")
     print(classification_report(y_test, pred, digits=4))
 
-    model_path = outdir / f"model_{args.mode}.joblib"
-    meta_path = outdir / f"meta_{args.mode}.json"
+    model_path = outdir / f"model_{args.mode}_{args.algo}.joblib"
+    meta_path  = outdir / f"meta_{args.mode}_{args.algo}.json"
+
 
     joblib.dump(pipe, model_path)
 
@@ -184,6 +222,7 @@ def main():
         "csv": str(csv_path),
         "url_col": url_col,
         "label_col": y_col,
+        "algo": args.algo,
         "n_train": int(len(y_train)),
         "n_test": int(len(y_test)),
         "feature_dim": int(X_train.shape[1]),

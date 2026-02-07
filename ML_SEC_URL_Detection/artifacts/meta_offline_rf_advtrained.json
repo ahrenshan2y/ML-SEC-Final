@@ -1,0 +1,16 @@
+{
+  "csv": "core/data/phishing.csv",
+  "mode": "offline_advtrained",
+  "rounds": 3,
+  "k_schedule": [
+    1,
+    2,
+    3
+  ],
+  "adv_ratio": 0.7,
+  "only_success_adv": false,
+  "seed": 42,
+  "test_size": 0.2,
+  "feature_dim": 30,
+  "algo": "rf"
+}

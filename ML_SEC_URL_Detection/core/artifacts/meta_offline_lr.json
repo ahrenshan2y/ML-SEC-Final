@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "csv": "core\\data\\phishing.csv",
+  "url_col": "<features>",
+  "label_col": "class",
+  "algo": "lr",
+  "n_train": 8843,
+  "n_test": 2211,
+  "feature_dim": 30,
+  "seed": 42,
+  "has_urls": false,
+  "online_timeout": null,
+  "maxn": null,
+  "cache_feats": false
+}

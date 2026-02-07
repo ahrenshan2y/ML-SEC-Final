@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../../ML-SEC-PJ"
+		},
+		{
+			"name": "ML_Phishing_URL_Detection",
+			"path": "../../../ML-SEC-PJ/ML_Phishing_URL_Detection"
+		}
+	],
+	"settings": {}
+}

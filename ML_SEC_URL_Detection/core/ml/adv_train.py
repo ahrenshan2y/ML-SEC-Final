@@ -5,6 +5,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -12,7 +13,43 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 
 from .adversarial_attack import batch_attack, OFFLINE_FEATURE_COLS
+def build_model(algo: str):
+    """
+    algo:
+      - lr  : StandardScaler + LogisticRegression
+      - rf  : RandomForest (no scaler)
+      - hgb : HistGradientBoosting (no scaler)
+    """
+    algo = algo.lower()
 
+    if algo == "lr":
+        return Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=2000))
+        ])
+
+    if algo == "rf":
+    
+        return RandomForestClassifier(
+            n_estimators=80,
+            max_depth=12,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            class_weight="balanced",
+            random_state=42,
+            n_jobs=1,
+        )
+
+    if algo == "hgb":
+        
+        return HistGradientBoostingClassifier(
+            max_depth=6,
+            learning_rate=0.08,
+            max_iter=300,
+            random_state=42
+        )
+
+    raise ValueError("algo must be one of: lr, rf, hgb")
 def parse_k_schedule(s: str):
     return [int(x.strip()) for x in s.split(",") if x.strip()]
 
@@ -23,7 +60,7 @@ def main():
     ap.add_argument("--outdir", default="artifacts")
     ap.add_argument("--test_size", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=42)
-
+    ap.add_argument("--algo", choices=["lr", "rf", "hgb"], default="rf")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--k_schedule", default="1,2,3")
     ap.add_argument("--adv_ratio", type=float, default=1.0)
@@ -49,13 +86,7 @@ def main():
     )
 
     # base pipeline
-    def make_model():
-        return Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(max_iter=2000))
-        ])
-
-    model = make_model()
+    model = build_model(args.algo)
     model.fit(X_train, y_train)
 
     k_list = parse_k_schedule(args.k_schedule)
@@ -101,7 +132,7 @@ def main():
             y_mix = y_train
 
         # re-train from scratch each round 
-        model = make_model()
+        model = build_model(args.algo)
         model.fit(X_mix, y_mix)
 
     # final reports (k=3 use the last k)
@@ -115,8 +146,8 @@ def main():
     print(f"\n=== Final Adversarial Report (k={k_final}) ===")
     print(classification_report(y_test, final_adv_pred, digits=4))
 
-    model_path = outdir / "model_offline_advtrained.joblib"
-    meta_path = outdir / "meta_offline_advtrained.json"
+    model_path = outdir / f"model_offline_{args.algo}_advtrained.joblib"
+    meta_path  = outdir / f"meta_offline_{args.algo}_advtrained.json"
 
     joblib.dump(model, model_path)
     meta = {
@@ -129,6 +160,7 @@ def main():
         "seed": args.seed,
         "test_size": args.test_size,
         "feature_dim": int(X.shape[1]),
+        "algo": args.algo,
     }
     meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
